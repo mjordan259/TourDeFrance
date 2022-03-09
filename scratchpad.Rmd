@@ -1,0 +1,132 @@
+---
+title: "TdF exploratory/scratch pad"
+---
+
+This notebook is for exploratory analysis, experimentation, and general nonlinear/experimental analysis on the stages_TDF dataset.
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+data <- read.csv('stages_TDF.csv')
+```
+
+Need to get data from 2018 through 2021.
+
+I don't really care about origin/destination or Winner_country, and those are both kind of a pain to get from the more recent information on wikipedia, so I'll drop those columns.
+
+```{r}
+data <- subset(data,select=c('Stage','Date','Distance','Type','Winner'))
+```
+
+For 2018-2021, Wikipedia has all the data in a relatively easy format to copy-paste into a csv file, although I need to do some hand-cleaning (setting the proper year, mostly), and will need to remove some stuff when I get it into R (lots of parentheticals).  
+
+Looking over the .csv, there's a little bit of cleaning to do -- it looks like there wasn't a winner for a stage in 1998, and that needs to be set to null. (One advantage of hand-jamming; there was also no winner for a stage in 2019 because the race was unable to continue due to adverse weather, so easy to set that to blank.)
+
+TODO: check that distances are recorded in km and convert if necessary, rename distance col to be more clear DONE
+
+```{r}
+recent_data <- read.csv('stages_TDF_recent.csv')
+```
+
+```{r}
+recent_data$Distance <- gsub(" km.{1,50}", "", recent_data$Distance)
+
+recent_data$Winner <- gsub(" [(].{3}[)]","",recent_data$Winner)
+
+recent_data$Winner <- trimws(recent_data$Winner, which = c("both"))
+```
+
+TODO: set dtypes to be the same, combine tables, visual and quick eda to create a list of things that need to be fixed
+
+```{r}
+data$Stage <- as.factor(data$Stage)
+data$Date <- ymd(data$Date)
+data$Distance <- as.numeric(data$Distance)
+str(data)
+```
+```{r}
+recent_data$Stage <- as.factor(recent_data$Stage)
+recent_data$Date <- ymd(recent_data$Date)
+recent_data$Distance <- as.numeric(recent_data$Distance)
+str(recent_data)
+```
+
+```{r}
+fulldata <- rbind(data,recent_data)
+```
+
+TODO:
+- any stage without a winner should have that set to null DONE
+- rename distance to be clear that it's in km DONE
+- there are some old stages with multiple winners(?) -- worth looking into, but probably doesn't need to be changed. DONE -- looks like you used to have joint winners? Presumably before photo finishes....
+- there's an [some text] after some winners names (presumably an asterisk, Lance Armstrong has a lot of them...), delete that just for clarity. DONE
+- Winners can be either individuals or teams which is a little annoying, but probably not worth fixing right now. (it's not worth assessing which teams won the most because they change names every year practically)
+- Type has an inconsistent classification -- probably worth creating a second, more holistic option with just flat, mountain, or time trial. (which won't account for things like a mountain time trial, argh.) DONE
+- Type also needs whitespaces removed DONE
+
+```{r}
+fulldata$Winner <- ifelse(fulldata$Date == '1998-07-29', NA, fulldata$Winner)
+
+fulldata$Winner <- ifelse(fulldata$Date == '2019-07-26', NA, fulldata$Winner)
+
+```
+
+```{r}
+fulldata <- rename(fulldata,'Distance_km'='Distance')
+```
+
+```{r}
+fulldata$Winner <- gsub("[[].{1,10}[]]","",fulldata$Winner)
+```
+
+```{r}
+fulldata$Type <- trimws(fulldata$Type, which = c("both"))
+```
+
+```{r}
+table(fulldata$Type)
+```
+
+```{r}
+mountain <- subset(fulldata,fulldata$Type=='Mountain time trial')
+```
+
+
+```{r}
+fulldata$Type_general <- NA
+```
+
+```{r}
+fulldata$Type_general <- ifelse(fulldata$Type %in% c('High mountain stage','Hilly stage','Medium mountain stage','Medium-mountain stage','Mountain stage','Mountain Stage','Stage with mountain','Stage with mountain(s)'),'mountain',fulldata$Type_general)
+
+fulldata$Type_general <- ifelse(fulldata$Type %in% c('Flat','Flat cobblestone stage','Flat stage','Flat Stage','Plain stage','Plain stage with cobblestones'),'flat',fulldata$Type_general)
+
+fulldata$Type_general <- ifelse(fulldata$Type %in% c('Individual time trial', 'Team time trial','Mountain time trial'),'time trial',fulldata$Type_general)
+
+fulldata$Type_general <- coalesce(fulldata$Type_general,'other')
+```
+
+Mountain Time Trial is awful split, but looking at the winners it *seems* to favor GC contenders rather than dedicated climbers, and also is definitely short enough to be more time trial than mountain, so I'm going to classify it there.
+
+```{r}
+str(fulldata)
+```
+
+```{r}
+summary(fulldata)
+```
+
+```{r}
+hist(fulldata$Distance_km)
+```
+
+```{r}
+ggplot(fulldata,aes(Date,Distance_km))+
+  geom_point()
+```
+
+You can see the world wars in absence of data! Pretty big spread, but there's definitely a trend towards more shorter stages post-WWI and especially post-WWII.
